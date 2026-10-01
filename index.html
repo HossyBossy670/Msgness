@@ -112,6 +112,9 @@
     .message-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px; }
     .message-author { font-size: 12px; font-weight: 700; }
     .message-time { color: #a0a197; font-size: 9px; }
+    .delete-message-button { width: 27px; height: 27px; display: inline-grid; place-items: center; margin-left: auto; border: 0; border-radius: 7px; background: transparent; color: #92958b; cursor: pointer; }
+    .delete-message-button:hover { background: #f7e9e4; color: #a34d39; }
+    .delete-message-button svg { width: 15px; height: 15px; }
     .message-body { margin: 4px 0 0; color: #535952; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
     .attachment { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin-top: 9px; padding: 9px 11px; border: 1px solid #e8e7df; border-radius: 8px; background: #fffefa; text-decoration: none; }
     .attachment svg { width: 17px; height: 17px; flex: 0 0 auto; color: #748571; }
@@ -295,7 +298,13 @@
           const content = document.createElement("div"); content.className = "message-content";
           const meta = document.createElement("div"); meta.className = "message-meta";
           const author = document.createElement("span"); author.className = "message-author"; author.textContent = message.author_name || "Someone";
-          const time = document.createElement("time"); time.className = "message-time"; time.dateTime = message.created_at; time.textContent = displayTime(message.created_at); meta.append(author, time); content.append(meta);
+          const time = document.createElement("time"); time.className = "message-time"; time.dateTime = message.created_at; time.textContent = displayTime(message.created_at); meta.append(author, time);
+          if (state.client && message.author_id === state.user?.id) {
+            const deleteButton = document.createElement("button"); deleteButton.className = "delete-message-button"; deleteButton.type = "button"; deleteButton.setAttribute("aria-label", "Delete your message"); deleteButton.title = "Delete your message";
+            deleteButton.innerHTML = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            deleteButton.addEventListener("click", () => deleteMessage(message)); meta.append(deleteButton);
+          }
+          content.append(meta);
           if (message.body) { const body = document.createElement("p"); body.className = "message-body"; body.textContent = message.body; content.append(body); }
           if (message.attachment_path) {
             const attachment = makeAttachment(message);
@@ -307,6 +316,18 @@
         if (!query) feed.scrollTop = feed.scrollHeight;
       }
       function colorFor(name) { const colors = ["orange", "mint", "blue", ""]; return colors[[...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % colors.length]; }
+      async function deleteMessage(message) {
+        if (!state.client || !state.user || message.author_id !== state.user.id) return;
+        if (!confirm("Delete your message? This can't be undone.")) return;
+        const { data, error } = await state.client.from("messages").delete().eq("id", message.id).eq("author_id", state.user.id).select("id,attachment_path").maybeSingle();
+        if (error) { toast(`Couldn't delete the message: ${error.message}`); return; }
+        if (!data) { toast("That message is no longer available to delete."); return; }
+        state.messages = state.messages.filter((item) => item.id !== data.id); renderRooms(); renderFeed();
+        if (data.attachment_path) {
+          const { error: fileError } = await state.client.storage.from("community-files").remove([data.attachment_path]);
+          if (fileError) toast("Message deleted, but its attached file couldn't be removed.");
+        }
+      }
       function updateIdentity() { el("current-name").textContent = state.displayName; el("current-avatar").textContent = initials(state.displayName); el("profile-button").textContent = initials(state.displayName)[0]; }
       async function selectRoom(id) {
         state.roomId = id; state.search = ""; el("search").value = ""; renderRooms(); renderFeed(); document.body.classList.remove("show-sidebar");
@@ -335,7 +356,7 @@
         state.channel = client.channel("openroom-live")
           .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
             if (payload.eventType === "INSERT" && !state.messages.some((message) => message.id === payload.new.id)) { state.messages.push(payload.new); renderRooms(); if (payload.new.room_id === state.roomId) renderFeed(); }
-            else if (payload.eventType === "DELETE") { state.messages = state.messages.filter((message) => message.id !== payload.old.id); renderFeed(); }
+            else if (payload.eventType === "DELETE") { state.messages = state.messages.filter((message) => message.id !== payload.old.id); renderRooms(); renderFeed(); }
           })
           .on("postgres_changes", { event: "INSERT", schema: "public", table: "rooms" }, (payload) => {
             if (!state.rooms.some((room) => room.id === payload.new.id)) { state.rooms.push(payload.new); state.rooms.sort((a, b) => a.name.localeCompare(b.name)); renderRooms(); }
