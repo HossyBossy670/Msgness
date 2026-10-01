@@ -275,10 +275,33 @@
         search: "",
         communities: Array.isArray(savedCommunities) && savedCommunities.length ? savedCommunities : [{ id: "openroom", name: "Openroom" }],
         activeCommunityId: localStorage.getItem("openroom-active-community") || "openroom",
-        communityName: localStorage.getItem("openroom-active-community-name") || "Openroom"
+        communityName: localStorage.getItem("openroom-active-community-name") || "Openroom",
+        communityData: {
+          openroom: { rooms: [...defaults], messages: [...demoMessages] }
+        }
       };
       const el = (id) => document.getElementById(id);
       let toastTimer;
+      function ensureCommunityState(id) {
+        const communityId = id || "openroom";
+        if (!state.communityData[communityId]) {
+          state.communityData[communityId] = { rooms: [...defaults], messages: [] };
+        }
+        state.rooms = state.communityData[communityId].rooms;
+        state.messages = state.communityData[communityId].messages;
+        state.roomId = state.rooms.some((room) => room.id === state.roomId) ? state.roomId : state.rooms[0].id;
+      }
+      function switchCommunity(id) {
+        const targetId = id || "openroom";
+        ensureCommunityState(targetId);
+        state.activeCommunityId = targetId;
+        state.communityName = state.communities.find((community) => community.id === targetId)?.name || "Openroom";
+        localStorage.setItem("openroom-active-community", targetId);
+        localStorage.setItem("openroom-active-community-name", state.communityName);
+        renderCommunityRail();
+        renderRooms();
+        renderFeed();
+      }
       function hoursAgo(hours) { return new Date(Date.now() - hours * 3600000).toISOString(); }
       function renderCommunityRail() {
         const addButton = el("add-community");
@@ -291,15 +314,7 @@
           button.title = community.name;
           button.setAttribute("aria-label", `Open ${community.name}`);
           button.textContent = initials(community.name).slice(0, 2) || "C";
-          button.addEventListener("click", () => {
-            state.activeCommunityId = community.id;
-            state.communityName = community.name;
-            localStorage.setItem("openroom-active-community", community.id);
-            localStorage.setItem("openroom-active-community-name", community.name);
-            document.querySelector(".community-title").textContent = community.name;
-            document.querySelector(".community-subtitle").textContent = `A custom space for ${community.name}`;
-            renderCommunityRail();
-          });
+          button.addEventListener("click", () => switchCommunity(community.id));
           addButton.before(button);
         });
         const defaultButton = el("default-community-button");
@@ -323,15 +338,10 @@
         const id = escapeRoomName(name) || `community-${Date.now()}`;
         if (state.communities.some((community) => community.id === id)) { toast("That community already exists."); return; }
         state.communities.push({ id, name });
-        state.activeCommunityId = id;
-        state.communityName = name;
+        state.communityData[id] = { rooms: [...defaults], messages: [] };
         localStorage.setItem("openroom-communities", JSON.stringify(state.communities));
-        localStorage.setItem("openroom-active-community", id);
-        localStorage.setItem("openroom-active-community-name", name);
-        document.querySelector(".community-title").textContent = name;
-        document.querySelector(".community-subtitle").textContent = `A custom space for ${name}`;
+        switchCommunity(id);
         closeCommunityCreator();
-        renderCommunityRail();
         toast(`Community "${name}" is ready.`);
       }
       function toast(message) { const node = el("toast"); node.textContent = message; node.classList.add("visible"); clearTimeout(toastTimer); toastTimer = setTimeout(() => node.classList.remove("visible"), 3500); }
@@ -418,7 +428,9 @@
         if (!state.client) return;
         const { data, error } = await state.client.from("messages").select("*").eq("room_id", id).order("created_at", { ascending: true }).limit(150);
         if (error) { toast(`Could not load room: ${error.message}`); return; }
-        state.messages = [...state.messages.filter((message) => message.room_id !== id), ...(data || [])]; renderRooms(); renderFeed();
+        state.communityData[state.activeCommunityId].messages = [...state.messages.filter((message) => message.room_id !== id), ...(data || [])];
+        state.messages = state.communityData[state.activeCommunityId].messages;
+        renderRooms(); renderFeed();
       }
       async function connect(url, key) {
         if (!window.supabase?.createClient) throw new Error("The Supabase client did not load. Check your connection and refresh.");
@@ -472,7 +484,10 @@
           }
           if (!state.client) {
             const message = { id: `local-${crypto.randomUUID()}`, room_id: state.roomId, author_name: state.displayName, body, created_at: new Date().toISOString(), ...attachment };
-            if (state.selectedFile) message.public_url = URL.createObjectURL(state.selectedFile); state.messages.push(message); toast("Preview only. Connect Supabase to share with everyone.");
+            if (state.selectedFile) message.public_url = URL.createObjectURL(state.selectedFile);
+            state.communityData[state.activeCommunityId].messages.push(message);
+            state.messages = state.communityData[state.activeCommunityId].messages;
+            toast("Preview only. Connect Supabase to share with everyone.");
           } else {
             const { error } = await state.client.from("messages").insert({ room_id: state.roomId, author_id: state.user.id, author_name: state.displayName, body, ...attachment }); if (error) throw error;
           }
@@ -488,6 +503,7 @@
           const { data, error } = await state.client.from("rooms").insert({ id: name, name, topic: "A room to share something good." }).select("id,name,topic").single();
           if (error) { toast(`Couldn't create the room: ${error.message}`); return; } state.rooms.push(data);
         } else { state.rooms.push({ id: name, name, topic: "A room to share something good." }); toast("Preview room only. Connect Supabase to share it."); }
+        state.communityData[state.activeCommunityId].rooms = state.rooms;
         renderRooms(); selectRoom(name);
       }
       function openSetup() { el("project-url").value = SHARED_SITE_CONFIG.projectUrl || localStorage.getItem("openroom-supabase-url") || ""; el("public-key").value = SHARED_SITE_CONFIG.publishableKey || localStorage.getItem("openroom-supabase-key") || ""; el("setup-modal").hidden = false; el("project-url").focus(); }
@@ -523,15 +539,7 @@
       el("message-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); el("composer").requestSubmit(); } });
       el("attach-button").addEventListener("click", () => el("file-input").click());
       el("file-input").addEventListener("change", (event) => { state.selectedFile = event.target.files[0] || null; el("attach-name").textContent = state.selectedFile ? state.selectedFile.name : ""; });
-      el("default-community-button").addEventListener("click", () => {
-        state.activeCommunityId = "openroom";
-        state.communityName = "Openroom";
-        localStorage.setItem("openroom-active-community", "openroom");
-        localStorage.setItem("openroom-active-community-name", "Openroom");
-        document.querySelector(".community-title").textContent = "Openroom";
-        document.querySelector(".community-subtitle").textContent = "A little corner of the internet";
-        renderCommunityRail();
-      });
+      el("default-community-button").addEventListener("click", () => switchCommunity("openroom"));
       el("add-room").addEventListener("click", addRoom); el("add-community").addEventListener("click", openCommunityCreator); el("community-form").addEventListener("submit", saveCommunity); el("close-community").addEventListener("click", closeCommunityCreator); el("cancel-community").addEventListener("click", closeCommunityCreator); el("community-modal").addEventListener("click", (event) => { if (event.target === el("community-modal")) closeCommunityCreator(); });
       el("connect-button").addEventListener("click", openSetup); el("banner-connect").addEventListener("click", openSetup);
       el("close-setup").addEventListener("click", closeSetup); el("cancel-setup").addEventListener("click", closeSetup); el("save-setup").addEventListener("click", handleConnect);
@@ -551,9 +559,17 @@
         catch { toast("Copy your site address and add #room=" + state.roomId + " to share this room."); }
       });
       updateIdentity(); const roomFromLink = new URLSearchParams(location.hash.slice(1)).get("room"); if (roomFromLink && defaults.some((room) => room.id === roomFromLink)) state.roomId = roomFromLink;
+      ensureCommunityState(state.activeCommunityId);
       renderCommunityRail(); renderRooms(); renderFeed();
       const loadingScreen = el("loading-screen");
-      window.setTimeout(() => { if (loadingScreen) loadingScreen.classList.add("hidden"); }, 1500);
+      window.setTimeout(() => {
+        if (loadingScreen) {
+          loadingScreen.classList.add("hidden");
+          loadingScreen.style.display = "none";
+          loadingScreen.style.visibility = "hidden";
+          loadingScreen.style.opacity = "0";
+        }
+      }, 1500);
       const savedUrl = SHARED_SITE_CONFIG.projectUrl || localStorage.getItem("openroom-supabase-url"); const savedKey = SHARED_SITE_CONFIG.publishableKey || localStorage.getItem("openroom-supabase-key");
       if (savedUrl && savedKey) connect(savedUrl, savedKey).catch((error) => { el("preview-banner").hidden = false; toast(`Saved Supabase connection needs attention: ${error.message}`); });
     })();
