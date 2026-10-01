@@ -224,6 +224,7 @@
     </main>
   </div>
   <div class="modal-backdrop" id="setup-modal" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="setup-title"><div class="modal-top"><h2 id="setup-title">Make it a shared space</h2><button class="icon-button" id="close-setup" type="button" aria-label="Close setup"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div><p class="modal-intro">A free Supabase project gives Openroom shared rooms, live chat, and file uploads. No card needed on the free plan.</p><ol class="setup-steps"><li><a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Create a free Supabase project</a> and wait for it to finish provisioning.</li><li>In <b>SQL Editor</b>, run the script in <b>setup.sql</b> from this folder.</li><li>Enable <b>Anonymous Sign-Ins</b> in Authentication settings.</li><li>Copy the Project URL and publishable key from <b>Project Settings → API</b>.</li></ol><label class="field-label" for="project-url">Project URL</label><input class="field-input" id="project-url" type="url" placeholder="https://your-project.supabase.co" autocomplete="url"><label class="field-label" for="public-key">Publishable key</label><input class="field-input" id="public-key" type="password" placeholder="sb_publishable_..." autocomplete="off"><div class="modal-actions"><button class="secondary-button" id="cancel-setup" type="button">Not now</button><button class="primary-button" id="save-setup" type="button">Connect to Openroom</button></div><p class="modal-footnote">This form connects only this browser. To connect the published site for everyone, set SHARED_SITE_CONFIG in index.html. Only use a public publishable key; never use a secret or service-role key. Posting is public to anyone with your site link.</p></section></div>
+  <div class="modal-backdrop" id="name-modal" hidden><form class="modal" id="name-form" role="dialog" aria-modal="true" aria-labelledby="name-title"><div class="modal-top"><h2 id="name-title">Choose your name</h2><button class="icon-button" id="close-name" type="button" aria-label="Close name settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div><p class="modal-intro">Your name is saved to this browser and guest profile.</p><label class="field-label" for="name-input">Display name</label><input class="field-input" id="name-input" maxlength="32" autocomplete="nickname" required><div class="modal-actions"><button class="secondary-button" id="cancel-name" type="button">Cancel</button><button class="primary-button" id="save-name" type="submit">Save name</button></div></form></div>
   <div class="toast" id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -345,6 +346,16 @@
         const { data: sessionData, error: sessionError } = await client.auth.getSession(); if (sessionError) throw sessionError;
         let user = sessionData.session?.user;
         if (!user) { const { data, error } = await client.auth.signInAnonymously(); if (error) throw error; user = data.user; }
+        const savedName = localStorage.getItem("openroom-name");
+        const profileName = typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name.trim() : "";
+        state.displayName = (savedName || profileName || "You").trim().slice(0, 32) || "You";
+        localStorage.setItem("openroom-name", state.displayName);
+        updateIdentity();
+        let profileUpdateError = null;
+        if (state.displayName !== profileName && state.displayName !== "You") {
+          const { error } = await client.auth.updateUser({ data: { display_name: state.displayName } });
+          profileUpdateError = error;
+        }
         const { data: rooms, error: roomsError } = await client.from("rooms").select("id,name,topic").order("name");
         if (roomsError) throw roomsError;
         if (!rooms?.length) throw new Error("The rooms table is empty. Run setup.sql in your Supabase SQL Editor, then try again.");
@@ -352,6 +363,7 @@
         state.client = client; state.user = user; state.rooms = rooms; state.messages = [];
         localStorage.setItem("openroom-supabase-url", cleanUrl); localStorage.setItem("openroom-supabase-key", key.trim());
         el("preview-banner").hidden = true; el("connect-label").textContent = "Connected"; el("connect-button").classList.add("connected"); el("connection-state").textContent = "Connected"; el("room-status").classList.add("visible");
+        if (profileUpdateError) toast("Your name is saved in this browser, but couldn't sync to your guest profile.");
         await selectRoom(rooms.some((room) => room.id === state.roomId) ? state.roomId : rooms[0].id);
         state.channel = client.channel("openroom-live")
           .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
@@ -403,6 +415,27 @@
         catch (error) { toast(error.message || "Couldn't connect to Supabase."); }
         finally { button.disabled = false; button.textContent = "Connect to Openroom"; }
       }
+      function openNameEditor() { el("name-input").value = state.displayName === "You" ? "" : state.displayName; el("name-modal").hidden = false; el("name-input").focus(); }
+      function closeNameEditor() { el("name-modal").hidden = true; }
+      async function saveDisplayName(event) {
+        event.preventDefault();
+        const name = el("name-input").value.trim().slice(0, 32);
+        if (!name) { toast("Enter a display name first."); return; }
+        const button = el("save-name"); button.disabled = true;
+        state.displayName = name;
+        localStorage.setItem("openroom-name", name);
+        updateIdentity();
+        closeNameEditor();
+        try {
+          if (state.client) {
+            const { error } = await state.client.auth.updateUser({ data: { display_name: name } });
+            if (error) throw error;
+          }
+          toast("Display name saved.");
+        } catch (error) {
+          toast("Saved in this browser, but guest-profile sync failed.");
+        } finally { button.disabled = false; }
+      }
       el("composer").addEventListener("submit", postMessage);
       el("message-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); el("composer").requestSubmit(); } });
       el("attach-button").addEventListener("click", () => el("file-input").click());
@@ -411,8 +444,12 @@
       el("close-setup").addEventListener("click", closeSetup); el("cancel-setup").addEventListener("click", closeSetup); el("save-setup").addEventListener("click", handleConnect);
       el("setup-modal").addEventListener("click", (event) => { if (event.target === el("setup-modal")) closeSetup(); });
       el("search").addEventListener("input", (event) => { state.search = event.target.value; renderFeed(); });
-      el("edit-name").addEventListener("click", () => { const name = prompt("What should we call you?", state.displayName); if (name?.trim()) { state.displayName = name.trim().slice(0, 32); localStorage.setItem("openroom-name", state.displayName); updateIdentity(); } });
-      el("profile-button").addEventListener("click", () => el("edit-name").click());
+      el("edit-name").addEventListener("click", openNameEditor);
+      el("profile-button").addEventListener("click", openNameEditor);
+      el("name-form").addEventListener("submit", saveDisplayName);
+      el("close-name").addEventListener("click", closeNameEditor);
+      el("cancel-name").addEventListener("click", closeNameEditor);
+      el("name-modal").addEventListener("click", (event) => { if (event.target === el("name-modal")) closeNameEditor(); });
       el("community-menu").addEventListener("click", () => toast("Openroom is a public community. Anyone with the site link can join."));
       el("mobile-menu").addEventListener("click", () => document.body.classList.toggle("show-sidebar"));
       el("share-button").addEventListener("click", async () => {
