@@ -91,7 +91,20 @@
     .connect-button:hover { background: var(--forest-soft); }
     .connect-button.connected { background: #e9eee1; color: #47613b; }
     .connect-button svg { width: 15px; height: 15px; }
-    .preview-banner { display: flex; align-items: center; gap: 9px; padding: 9px 27px; border-bottom: 1px solid #eee4d6; background: #fff8ec; color: #775d3c; font-size: 11px; }
+    .loading-screen { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(246, 245, 240, 0.96); backdrop-filter: blur(6px); transition: opacity .35s ease, visibility .35s ease; }
+    .loading-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    .loading-content { display: grid; justify-items: center; gap: 14px; text-align: center; }
+    .loading-title { margin: 0; font: 700 clamp(2.4rem, 6vw, 5rem) "Space Grotesk", sans-serif; letter-spacing: -0.08em; color: var(--forest); }
+    .loading-dots { display: inline-flex; align-items: flex-end; gap: 11px; height: 24px; }
+    .loading-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--forest); opacity: .22; animation: loadingBlink 1.2s infinite ease-in-out; }
+    .loading-dot:nth-child(2) { animation-delay: .18s; }
+    .loading-dot:nth-child(3) { animation-delay: .36s; }
+    @keyframes loadingBlink {
+      0%, 40% { opacity: .2; transform: translateY(6px) scale(.7); }
+      20% { opacity: 1; transform: translateY(0) scale(1); }
+      60%, 100% { opacity: .2; transform: translateY(6px) scale(.7); }
+    }
+    .preview-banner { display: none; }
     .preview-banner[hidden] { display: none; }
     .preview-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--orange); }
     .preview-banner button { margin-left: auto; padding: 4px 8px; border: 0; border-radius: 6px; background: #f3e7d2; color: #654c31; font-size: 10px; font-weight: 700; cursor: pointer; }
@@ -209,7 +222,7 @@
   <div class="app">
     <nav class="server-rail" aria-label="Communities">
       <button class="brand-mark" type="button" aria-label="Openroom home" title="Openroom"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 13.2 11.5 5 19 10.8l-6.5 8.1L5 13.2Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/></svg></button>
-      <span class="rail-divider"></span><button class="server-icon active" type="button" aria-label="Openroom community" title="Openroom">O</button><button class="server-icon" type="button" aria-label="Community two" title="Your next community">+</button><button class="server-icon rail-add" type="button" aria-label="Add a community" title="Add a community">+</button><button class="server-icon rail-bottom" id="profile-button" type="button" aria-label="Edit your name" title="Edit your name">?</button>
+      <span class="rail-divider"></span><button class="server-icon active" id="default-community-button" type="button" aria-label="Openroom community" title="Openroom">O</button><button class="server-icon rail-add" id="add-community" type="button" aria-label="Add a community" title="Add a community">+</button><button class="server-icon rail-bottom" id="profile-button" type="button" aria-label="Edit your name" title="Edit your name">?</button>
     </nav>
     <aside class="channel-panel" aria-label="Community channels">
       <div class="community-heading"><div><h1 class="community-title">Openroom</h1><p class="community-subtitle">A little corner of the internet</p></div><button class="icon-button" id="community-menu" type="button" aria-label="Community settings" title="Community settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg></button></div>
@@ -218,13 +231,15 @@
     </aside>
     <main class="main-panel">
       <header class="topbar"><button class="icon-button mobile-menu" id="mobile-menu" type="button" aria-label="Open rooms" title="Open rooms"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button><div class="room-heading"><div class="room-title-row"><span class="channel-hash">#</span><h2 class="room-title" id="room-title">general</h2><span class="status-pill" id="room-status">LIVE</span></div><p class="room-topic" id="room-topic">The shared table. Pull up a chair.</p></div><div class="toolbar"><label class="search-wrap" aria-label="Search messages"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input class="search-input" id="search" type="search" placeholder="Find a message" autocomplete="off"></label><button class="icon-button" id="share-button" type="button" aria-label="Copy room link" title="Copy room link"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7M14 11a5 5 0 0 0-7.1 0l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button><button class="connect-button" id="connect-button" type="button" title="Connect a free Supabase backend"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="connect-label">Connect</span></button></div></header>
-      <div class="preview-banner" id="preview-banner"><i class="preview-dot"></i><span>You're looking at a local preview. Connect a free Supabase project to share posts with everyone.</span><button id="banner-connect" type="button">Set up sharing</button></div>
+      <div class="loading-screen" id="loading-screen" aria-live="polite" aria-label="Loading application"><div class="loading-content"><h1 class="loading-title">Loading...</h1><div class="loading-dots" aria-hidden="true"><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></div></div></div>
+      <div class="preview-banner" id="preview-banner" hidden><i class="preview-dot"></i><span>You're looking at a local preview. Connect a free Supabase project to share posts with everyone.</span><button id="banner-connect" type="button">Set up sharing</button></div>
       <section class="feed" id="feed" aria-label="Messages" aria-live="polite"></section>
       <div class="composer-wrap"><form class="composer" id="composer"><textarea id="message-input" rows="2" maxlength="4000" placeholder="Message #general" aria-label="Write a message"></textarea><div class="composer-footer"><button class="composer-tool" id="attach-button" type="button" aria-label="Attach an image or file" title="Attach an image or file"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12.5 7.6-7.6a3.2 3.2 0 0 1 4.5 4.5l-9.2 9.2a5 5 0 0 1-7.1-7.1L13 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button><input class="file-input" id="file-input" type="file" accept="image/*,.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.zip,.csv,.json,.mp3,.mp4,.mov"><span class="attach-name" id="attach-name"></span><span class="composer-spacer"></span><span class="composer-hint">Enter to send</span><button class="send-button" id="send-button" type="submit"><span>Send</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m21 3-7.2 18-3.7-7.1L3 10.2 21 3Zm0 0L10.1 13.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></form></div>
     </main>
   </div>
   <div class="modal-backdrop" id="setup-modal" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="setup-title"><div class="modal-top"><h2 id="setup-title">Make it a shared space</h2><button class="icon-button" id="close-setup" type="button" aria-label="Close setup"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div><p class="modal-intro">A free Supabase project gives Openroom shared rooms, live chat, and file uploads. No card needed on the free plan.</p><ol class="setup-steps"><li><a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Create a free Supabase project</a> and wait for it to finish provisioning.</li><li>In <b>SQL Editor</b>, run the script in <b>setup.sql</b> from this folder.</li><li>Enable <b>Anonymous Sign-Ins</b> in Authentication settings.</li><li>Copy the Project URL and publishable key from <b>Project Settings → API</b>.</li></ol><label class="field-label" for="project-url">Project URL</label><input class="field-input" id="project-url" type="url" placeholder="https://your-project.supabase.co" autocomplete="url"><label class="field-label" for="public-key">Publishable key</label><input class="field-input" id="public-key" type="password" placeholder="sb_publishable_..." autocomplete="off"><div class="modal-actions"><button class="secondary-button" id="cancel-setup" type="button">Not now</button><button class="primary-button" id="save-setup" type="button">Connect to Openroom</button></div><p class="modal-footnote">This form connects only this browser. To connect the published site for everyone, set SHARED_SITE_CONFIG in index.html. Only use a public publishable key; never use a secret or service-role key. Posting is public to anyone with your site link.</p></section></div>
   <div class="modal-backdrop" id="name-modal" hidden><form class="modal" id="name-form" role="dialog" aria-modal="true" aria-labelledby="name-title"><div class="modal-top"><h2 id="name-title">Choose your name</h2><button class="icon-button" id="close-name" type="button" aria-label="Close name settings"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div><p class="modal-intro">Your name is saved to this browser and guest profile.</p><label class="field-label" for="name-input">Display name</label><input class="field-input" id="name-input" maxlength="32" autocomplete="nickname" required><div class="modal-actions"><button class="secondary-button" id="cancel-name" type="button">Cancel</button><button class="primary-button" id="save-name" type="submit">Save name</button></div></form></div>
+  <div class="modal-backdrop" id="community-modal" hidden><form class="modal" id="community-form" role="dialog" aria-modal="true" aria-labelledby="community-title"><div class="modal-top"><h2 id="community-title">Create a community</h2><button class="icon-button" id="close-community" type="button" aria-label="Close community creator"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div><p class="modal-intro">Give your space a name and add it to the rail. You can switch between communities any time.</p><label class="field-label" for="community-name-input">Community name</label><input class="field-input" id="community-name-input" maxlength="32" autocomplete="off" placeholder="Sunset Club" required><div class="modal-actions"><button class="secondary-button" id="cancel-community" type="button">Cancel</button><button class="primary-button" id="save-community" type="submit">Create community</button></div></form></div>
   <div class="toast" id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
@@ -247,10 +262,78 @@
         { id: "demo-5", room_id: "general", author_name: "Noah Ellis", body: "That is a real and specific victory. Welcome to Openroom, by the way!", created_at: hoursAgo(1.1), color: "mint" },
         { id: "demo-6", room_id: "general", author_name: "Mira Chen", body: "For anyone joining us: this is our general room. Say hello, share a small win, or simply lurk until something catches your eye. Glad you're here. 🌱", created_at: hoursAgo(.15), color: "orange" }
       ];
-      const state = { client: null, user: null, rooms: [...defaults], messages: [...demoMessages], roomId: "general", displayName: localStorage.getItem("openroom-name") || "You", selectedFile: null, channel: null, search: "" };
+      const savedCommunities = JSON.parse(localStorage.getItem("openroom-communities") || "null");
+      const state = {
+        client: null,
+        user: null,
+        rooms: [...defaults],
+        messages: [...demoMessages],
+        roomId: "general",
+        displayName: localStorage.getItem("openroom-name") || "You",
+        selectedFile: null,
+        channel: null,
+        search: "",
+        communities: Array.isArray(savedCommunities) && savedCommunities.length ? savedCommunities : [{ id: "openroom", name: "Openroom" }],
+        activeCommunityId: localStorage.getItem("openroom-active-community") || "openroom",
+        communityName: localStorage.getItem("openroom-active-community-name") || "Openroom"
+      };
       const el = (id) => document.getElementById(id);
       let toastTimer;
       function hoursAgo(hours) { return new Date(Date.now() - hours * 3600000).toISOString(); }
+      function renderCommunityRail() {
+        const addButton = el("add-community");
+        const customButtons = [...document.querySelectorAll(".community-server-button")];
+        customButtons.forEach((button) => button.remove());
+        state.communities.filter((community) => community.id !== "openroom").forEach((community) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `server-icon community-server-button${community.id === state.activeCommunityId ? " active" : ""}`;
+          button.title = community.name;
+          button.setAttribute("aria-label", `Open ${community.name}`);
+          button.textContent = initials(community.name).slice(0, 2) || "C";
+          button.addEventListener("click", () => {
+            state.activeCommunityId = community.id;
+            state.communityName = community.name;
+            localStorage.setItem("openroom-active-community", community.id);
+            localStorage.setItem("openroom-active-community-name", community.name);
+            document.querySelector(".community-title").textContent = community.name;
+            document.querySelector(".community-subtitle").textContent = `A custom space for ${community.name}`;
+            renderCommunityRail();
+          });
+          addButton.before(button);
+        });
+        const defaultButton = el("default-community-button");
+        if (defaultButton) {
+          defaultButton.classList.toggle("active", state.activeCommunityId === "openroom");
+          defaultButton.title = "Openroom";
+          defaultButton.setAttribute("aria-label", "Openroom community");
+        }
+        const activeCommunity = state.communities.find((community) => community.id === state.activeCommunityId) || state.communities[0];
+        const communityTitle = document.querySelector(".community-title");
+        const communitySubtitle = document.querySelector(".community-subtitle");
+        if (communityTitle) communityTitle.textContent = activeCommunity.name;
+        if (communitySubtitle) communitySubtitle.textContent = activeCommunity.id === "openroom" ? "A little corner of the internet" : `A custom space for ${activeCommunity.name}`;
+      }
+      function openCommunityCreator() { el("community-name-input").value = ""; el("community-modal").hidden = false; el("community-name-input").focus(); }
+      function closeCommunityCreator() { el("community-modal").hidden = true; }
+      function saveCommunity(event) {
+        event.preventDefault();
+        const name = el("community-name-input").value.trim();
+        if (!name) { toast("Choose a name for your community."); return; }
+        const id = escapeRoomName(name) || `community-${Date.now()}`;
+        if (state.communities.some((community) => community.id === id)) { toast("That community already exists."); return; }
+        state.communities.push({ id, name });
+        state.activeCommunityId = id;
+        state.communityName = name;
+        localStorage.setItem("openroom-communities", JSON.stringify(state.communities));
+        localStorage.setItem("openroom-active-community", id);
+        localStorage.setItem("openroom-active-community-name", name);
+        document.querySelector(".community-title").textContent = name;
+        document.querySelector(".community-subtitle").textContent = `A custom space for ${name}`;
+        closeCommunityCreator();
+        renderCommunityRail();
+        toast(`Community "${name}" is ready.`);
+      }
       function toast(message) { const node = el("toast"); node.textContent = message; node.classList.add("visible"); clearTimeout(toastTimer); toastTimer = setTimeout(() => node.classList.remove("visible"), 3500); }
       function initials(name) { return (name.trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join("") || "?").toUpperCase(); }
       function escapeRoomName(name) { return name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "").slice(0, 32); }
@@ -440,7 +523,17 @@
       el("message-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); el("composer").requestSubmit(); } });
       el("attach-button").addEventListener("click", () => el("file-input").click());
       el("file-input").addEventListener("change", (event) => { state.selectedFile = event.target.files[0] || null; el("attach-name").textContent = state.selectedFile ? state.selectedFile.name : ""; });
-      el("add-room").addEventListener("click", addRoom); el("connect-button").addEventListener("click", openSetup); el("banner-connect").addEventListener("click", openSetup);
+      el("default-community-button").addEventListener("click", () => {
+        state.activeCommunityId = "openroom";
+        state.communityName = "Openroom";
+        localStorage.setItem("openroom-active-community", "openroom");
+        localStorage.setItem("openroom-active-community-name", "Openroom");
+        document.querySelector(".community-title").textContent = "Openroom";
+        document.querySelector(".community-subtitle").textContent = "A little corner of the internet";
+        renderCommunityRail();
+      });
+      el("add-room").addEventListener("click", addRoom); el("add-community").addEventListener("click", openCommunityCreator); el("community-form").addEventListener("submit", saveCommunity); el("close-community").addEventListener("click", closeCommunityCreator); el("cancel-community").addEventListener("click", closeCommunityCreator); el("community-modal").addEventListener("click", (event) => { if (event.target === el("community-modal")) closeCommunityCreator(); });
+      el("connect-button").addEventListener("click", openSetup); el("banner-connect").addEventListener("click", openSetup);
       el("close-setup").addEventListener("click", closeSetup); el("cancel-setup").addEventListener("click", closeSetup); el("save-setup").addEventListener("click", handleConnect);
       el("setup-modal").addEventListener("click", (event) => { if (event.target === el("setup-modal")) closeSetup(); });
       el("search").addEventListener("input", (event) => { state.search = event.target.value; renderFeed(); });
@@ -458,7 +551,9 @@
         catch { toast("Copy your site address and add #room=" + state.roomId + " to share this room."); }
       });
       updateIdentity(); const roomFromLink = new URLSearchParams(location.hash.slice(1)).get("room"); if (roomFromLink && defaults.some((room) => room.id === roomFromLink)) state.roomId = roomFromLink;
-      renderRooms(); renderFeed();
+      renderCommunityRail(); renderRooms(); renderFeed();
+      const loadingScreen = el("loading-screen");
+      window.setTimeout(() => { if (loadingScreen) loadingScreen.classList.add("hidden"); }, 1500);
       const savedUrl = SHARED_SITE_CONFIG.projectUrl || localStorage.getItem("openroom-supabase-url"); const savedKey = SHARED_SITE_CONFIG.publishableKey || localStorage.getItem("openroom-supabase-key");
       if (savedUrl && savedKey) connect(savedUrl, savedKey).catch((error) => { el("preview-banner").hidden = false; toast(`Saved Supabase connection needs attention: ${error.message}`); });
     })();
